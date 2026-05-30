@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 class RobloxCog(commands.Cog):
     def __init__(self, bot):
@@ -15,7 +15,8 @@ class RobloxCog(commands.Cog):
         try:
             # 1. Buscar ID por Username
             search_url = "https://users.roblox.com/v1/usernames/users"
-            search_response = requests.post(search_url, json={"usernames": [username], "excludeBannedUsers": False})
+            search_payload = {"usernames": [username], "excludeBannedUsers": False}
+            search_response = requests.post(search_url, json=search_payload)
             
             if search_response.status_code != 200 or not search_response.json().get("data"):
                 return await waiting.edit(embed=discord.Embed(description=f"❌ No se encontró al usuario `{username}`.", color=discord.Color.red()))
@@ -33,13 +34,14 @@ class RobloxCog(commands.Cog):
             if profile.get("created"):
                 created_at = datetime.strptime(profile["created"].split("T")[0], "%Y-%m-%d").strftime("%d/%m/%Y")
 
-            # 3. Obtener miniatura
+            # 3. Obtener miniatura de la cabeza del avatar
             thumb = requests.get(f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=180x180&format=Png").json()
-            avatar_image = thumb["data"][0]["imageUrl"] if thumb.get("data") else None
+            avatar_image = thumb["data"][0]["imageUrl"] if thumb.get("data") and len(thumb["data"]) > 0 else None
 
             # Embed Final
             embed = discord.Embed(title=f"👤 Perfil: {display_name}", url=f"https://www.roblox.com/users/{user_id}/profile", color=discord.Color.red())
-            if avatar_image: embed.set_thumbnail(url=avatar_image)
+            if avatar_image: 
+                embed.set_thumbnail(url=avatar_image)
             
             embed.add_field(name="Username", value=f"`{real_name}`", inline=True)
             embed.add_field(name="User ID", value=f"`{user_id}`", inline=True)
@@ -47,10 +49,11 @@ class RobloxCog(commands.Cog):
             embed.add_field(name="Creado el", value=f"`{created_at}`", inline=True)
             embed.add_field(name="Descripción", value=f"*{description}*", inline=False)
             embed.set_footer(text="Roblox Bot")
-            embed.timestamp = datetime.utcnow()
+            embed.timestamp = datetime.now(timezone.utc)
 
             await waiting.edit(embed=embed)
         except Exception as e:
+            print(f"Error en comando roblox: {e}")
             await waiting.edit(embed=discord.Embed(description="⚠️ Error al obtener el perfil.", color=discord.Color.red()))
 
     @commands.command(name="game")
@@ -69,8 +72,9 @@ class RobloxCog(commands.Cog):
             game_data = response["data"][0]
             universe_id = game_data["universeId"]
             
-            # Obtener datos detallados (visitas, activos, etc)
-            details = requests.get(f"https://games.roblox.com/v1/games?universeIds={universe_id}").json()["data"][0]
+            # Obtener datos detallados
+            details_res = requests.get(f"https://games.roblox.com/v1/games?universeIds={universe_id}").json()
+            details = details_res["data"][0]
             
             embed = discord.Embed(
                 title=f"🎮 {details['name']}",
@@ -84,15 +88,16 @@ class RobloxCog(commands.Cog):
             embed.add_field(name="Visitas Totales", value=f"👁️ `{details['visits']:,}`", inline=True)
             embed.add_field(name="Favoritos", value=f"⭐ `{details['favoritedCount']:,}`", inline=True)
             
-            if game_data.get("imageToken"):
-                # Intentar sacar la miniatura del juego
-                thumb_url = f"https://thumbnails.roblox.com/v1/games/icons?universeIds={universe_id}&returnPolicy=PlaceHolder&size=150x150&format=Png"
-                thumb_res = requests.get(thumb_url).json()
-                if thumb_res.get("data"):
-                    embed.set_thumbnail(url=thumb_res["data"][0]["imageUrl"])
+            # Intentar sacar la miniatura del juego
+            thumb_url = f"https://thumbnails.roblox.com/v1/games/icons?universeIds={universe_id}&returnPolicy=PlaceHolder&size=150x150&format=Png"
+            thumb_res = requests.get(thumb_url).json()
+            if thumb_res.get("data") and len(thumb_res["data"]) > 0:
+                embed.set_thumbnail(url=thumb_res["data"][0]["imageUrl"])
 
+            embed.timestamp = datetime.now(timezone.utc)
             await waiting.edit(embed=embed)
         except Exception as e:
+            print(f"Error en comando game: {e}")
             await waiting.edit(embed=discord.Embed(description="⚠️ Error al buscar el juego.", color=discord.Color.red()))
 
     @commands.command(name="status")
@@ -100,30 +105,28 @@ class RobloxCog(commands.Cog):
         """🌐 Verifica el estado actual de los servidores de Roblox"""
         waiting = await ctx.send(embed=discord.Embed(description="📡 Conectando con los servidores de estado...", color=discord.Color.light_gray()))
         try:
-            # Consumimos la API pública del estatus oficial de Roblox
-            res = requests.get("https://users.roblox.com/v1/users/1").json()
+            res = requests.get("https://users.roblox.com/v1/users/1")
             
-            if res.get("id") == 1:
+            if res.status_code == 200:
                 embed = discord.Embed(title="🌐 Estado de Roblox", description="✅ **¡Todos los sistemas operativos!** Las APIs responden correctamente.", color=discord.Color.green())
             else:
-                embed = discord.Embed(title="🌐 Estado de Roblox", description="⚠️ **Roblox podría estar experimentando problemas** o degradación en sus servicios.", color=discord.Color.orange())
+                embed = discord.Embed(title="🌐 Estado de Roblox", description="⚠️ **Roblox podría estar experimentando problemas**.", color=discord.Color.orange())
             
-            embed.set_footer(text="Verificación en tiempo real")
+            embed.timestamp = datetime.now(timezone.utc)
             await waiting.edit(embed=embed)
         except:
-            await waiting.edit(embed=discord.Embed(title="🌐 Estado de Roblox", description="🚨 **¡Roblox está caído por completo!** Las APIs principales no responden.", color=discord.Color.red()))
+            await waiting.edit(embed=discord.Embed(title="🌐 Estado de Roblox", description="🚨 **¡Roblox está caído por completo!**", color=discord.Color.red()))
 
     @commands.command(name="help")
     async def help_command(self, ctx):
         """📜 Lista de comandos disponibles"""
         prefix = self.bot.command_prefix
-        embed = discord.Embed(title="📋 Comandos del Bot de Roblox", description="Usa los comandos anteponiendo el prefijo configurado.", color=discord.Color.gold())
+        embed = discord.Embed(title="📋 Comandos del Bot de Roblox", description="Usa los comandos anteponiendo el prefijo.", color=discord.Color.gold())
         
-        embed.add_field(name=f"`{prefix}roblox [usuario]`", value="Muestra la información de un jugador (ID, baneo, creación).", inline=False)
-        embed.add_field(name=f"`{prefix}game [nombre]`", value="Busca un juego y muestra sus estadísticas actuales (activos, visitas).", inline=False)
-        embed.add_field(name=f"`{prefix}status`", value="Verifica si Roblox está caído o funcionando bien.", inline=False)
+        embed.add_field(name=f"`{prefix}roblox [usuario]`", value="Muestra la info de un jugador (ej: `!roblox builderman`).", inline=False)
+        embed.add_field(name=f"`{prefix}game [nombre]`", value="Busca estadísticas de un juego (ej: `!game adopt me`).", inline=False)
+        embed.add_field(name=f"`{prefix}status`", value="Verifica si Roblox está caído.", inline=False)
         
-        embed.set_footer(text="Copia modificada del bot de paulafredo")
         await ctx.send(embed=embed)
 
 async def setup(bot):
