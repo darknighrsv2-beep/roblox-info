@@ -8,14 +8,16 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", "!")
 
+# Es fundamental activar esto para leer los mensajes
 intents = discord.Intents.default()
 intents.message_content = True 
+intents.members = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 @bot.event
 async def on_ready():
-    print(f"🤖 Bot iniciado como {bot.user.name}")
+    print(f"🤖 Bot iniciado con éxito como {bot.user.name}")
     print("------------------------------------------")
     await bot.change_presence(activity=discord.Game(name=f"Roblox | {PREFIX}help"))
 
